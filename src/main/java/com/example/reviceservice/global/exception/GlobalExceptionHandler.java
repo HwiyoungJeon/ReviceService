@@ -12,7 +12,7 @@ public class GlobalExceptionHandler extends RuntimeException {
 
     @ExceptionHandler({ProductException.class,MemberException.class, ReviewException.class})
     public ResponseEntity<ErrorHandler> globalExceptionHandler(Exception ex) {
-        ErrorHandler errorHandler = new ErrorHandler(GlobalMessage.NOT_FOUND, HttpStatus.NOT_FOUND.value());
+        ErrorHandler errorHandler = new ErrorHandler(ex.getMessage(), HttpStatus.NOT_FOUND.value());
         return new ResponseEntity<>(errorHandler, HttpStatus.NOT_FOUND);
     }
 
