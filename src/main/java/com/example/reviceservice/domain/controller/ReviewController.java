@@ -1,31 +1,46 @@
 package com.example.reviceservice.domain.controller;
 
 
+import com.example.reviceservice.domain.dto.ProductCreatedResponseDTO;
 import com.example.reviceservice.domain.dto.ReviewCreatedRequestDTO;
 import com.example.reviceservice.domain.dto.ReviewCreatedResponseDTO;
 import com.example.reviceservice.domain.service.ReviewService;
 import com.example.reviceservice.global.handler.SuccessResponse;
 import com.example.reviceservice.global.message.GlobalMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/reviews")
 public class ReviewController {
 
     private final ReviewService reviewService;
 
-    @PostMapping("")
-    public ResponseEntity<SuccessResponse<ReviewCreatedResponseDTO>> createReview(@RequestBody ReviewCreatedRequestDTO reviewCreatedRequestDTO) {
+    @PostMapping(value = "/products/{productId}/reviews", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<SuccessResponse<ReviewCreatedResponseDTO>> createReview(
+            @PathVariable Long productId,
+            @RequestPart("review") String reviewJson,
+            @RequestPart(value = "image", required = false) MultipartFile image) {
 
-        ReviewCreatedResponseDTO reviewCreatedResponseDTO = reviewService.createReview(reviewCreatedRequestDTO);
-        SuccessResponse<ReviewCreatedResponseDTO> successResponse = new SuccessResponse<>(GlobalMessage.SUCCESS, HttpStatus.OK.value(),reviewCreatedResponseDTO);
+        ObjectMapper objectMapper = new ObjectMapper();
+        ReviewCreatedRequestDTO reviewCreatedRequestDTO;
+
+        try {
+            reviewCreatedRequestDTO = objectMapper.readValue(reviewJson, ReviewCreatedRequestDTO.class);
+        } catch (JsonProcessingException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build();
+        }
+
+
+        ReviewCreatedResponseDTO reviewCreatedResponseDTO = reviewService.createReview(productId, reviewCreatedRequestDTO, image);
+
+        SuccessResponse<ReviewCreatedResponseDTO> successResponse = new SuccessResponse<>(GlobalMessage.SUCCESS, HttpStatus.OK.value(), reviewCreatedResponseDTO);
 
         return ResponseEntity.ok(successResponse);
     }

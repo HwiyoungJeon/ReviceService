@@ -9,10 +9,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class ReviewCreatedRequestDTO {
 
-    private Long product_id;
-    private Long user_id;
-    private int review_score;
+    private Long userId;
+
+    private int score;
+
     private String content;
-
-
 }
