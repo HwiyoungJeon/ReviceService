@@ -1,9 +1,12 @@
 package com.example.reviceservice.domain.entity;
 
+import com.example.reviceservice.domain.dto.ReviewCreatedRequestDTO;
 import jakarta.persistence.*;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
+@Getter
 @NoArgsConstructor
 public class Review extends TimeStamp {
 
@@ -24,5 +27,12 @@ public class Review extends TimeStamp {
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content; // 리뷰 내용
+
+    public Review(ReviewCreatedRequestDTO reviewCreatedRequestDTO, Product product, Member member) {
+        this.product = product;
+        this.member = member;
+        this.content = reviewCreatedRequestDTO.getContent();
+        this.reviewScore = reviewCreatedRequestDTO.getReview_score();
+    }
 
 }
