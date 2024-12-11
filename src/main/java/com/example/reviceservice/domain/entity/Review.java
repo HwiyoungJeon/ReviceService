@@ -28,11 +28,17 @@ public class Review extends TimeStamp {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content; // 리뷰 내용
 
+    @Column
+    private String imageUrl; // 업로드된 이미지 URL
+
     public Review(ReviewCreatedRequestDTO reviewCreatedRequestDTO, Product product, Member member) {
         this.product = product;
         this.member = member;
         this.content = reviewCreatedRequestDTO.getContent();
-        this.reviewScore = reviewCreatedRequestDTO.getReview_score();
+        this.reviewScore = reviewCreatedRequestDTO.getScore();
     }
 
+    public void addImage(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
 }

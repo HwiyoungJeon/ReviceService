@@ -18,9 +18,10 @@ public class ReviewCreatedResponseDTO {
 
     private long id;
     private Long product_id;
-    private Long user_id;
-    private int review_score;
+    private Long userId;
+    private int score;
     private String content;
+    private String imageUrl;
 
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
@@ -31,12 +32,13 @@ public class ReviewCreatedResponseDTO {
     public ReviewCreatedResponseDTO(Review review) {
         this.id = review.getId();
         this.product_id = review.getProduct().getId();
-        this.user_id = review.getMember().getId();
+        this.userId = review.getMember().getId();
         if (review.getReviewScore() < 1 || review.getReviewScore() > 5) {
             throw new ReviewException(GlobalMessage.FIVE_AND_ONE_SCORE);
         }
-        this.review_score = review.getReviewScore();
+        this.score = review.getReviewScore();
         this.content = review.getContent();
+        this.imageUrl = review.getImageUrl();
         this.createdAt = review.getCreated();
         this.modified = review.getModified();
     }
