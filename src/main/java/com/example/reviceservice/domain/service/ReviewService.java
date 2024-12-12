@@ -2,6 +2,7 @@ package com.example.reviceservice.domain.service;
 
 import com.example.reviceservice.domain.dto.ReviewCreatedRequestDTO;
 import com.example.reviceservice.domain.dto.ReviewCreatedResponseDTO;
+import com.example.reviceservice.domain.dto.ReviewResponse;
 import com.example.reviceservice.domain.entity.Member;
 import com.example.reviceservice.domain.entity.Product;
 import com.example.reviceservice.domain.entity.Review;
@@ -14,9 +15,15 @@ import com.example.reviceservice.global.exception.ReviewException;
 import com.example.reviceservice.global.message.GlobalMessage;
 import com.example.reviceservice.global.uploader.ImageUploader;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -48,7 +55,6 @@ public class ReviewService {
         }
 
 
-
         // 리뷰 엔티티 생성 및 저장
         Review review = new Review(reviewCreatedRequestDTO, product, member);
         if (imageUrl != null) {
@@ -58,4 +64,38 @@ public class ReviewService {
 
         return new ReviewCreatedResponseDTO(review);
     }
+
+    public ReviewResponse getReviews(Long productId, int cursor, int size) {
+        // 페이징 요청 생성
+        PageRequest pageRequest = PageRequest.of(cursor, size, Sort.by(Sort.Direction.DESC, "created"));
+        Page<Review> reviewsPage = reviewRepository.findByProductId(productId, pageRequest);
+
+        // 리뷰 목록 변환
+        List<ReviewResponse.ReviewDTO> reviews = reviewsPage.getContent().stream()
+                .map(review -> new ReviewResponse.ReviewDTO(
+                        review.getId(),
+                        review.getMember().getId(),
+                        review.getReviewScore(),
+                        review.getContent(),
+                        review.getImageUrl(),
+                        review.getCreated()
+                ))
+                .collect(Collectors.toList());
+
+        double averageScore = reviews.stream()
+                .mapToInt(ReviewResponse.ReviewDTO::getScore)
+                .average()
+                .orElse(0.0);
+
+        // 응답 객체 생성
+        return new ReviewResponse(
+                reviewsPage.getTotalElements(),
+                averageScore,
+                cursor,
+                reviews
+        );
+
+    }
+
+
 }
