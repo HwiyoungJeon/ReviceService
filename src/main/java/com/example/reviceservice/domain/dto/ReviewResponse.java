@@ -11,7 +11,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ReviewResponse {
     private long totalCount;
-    private double score;
+    private float score;
     private int cursor;
     private List<ReviewDTO> reviews;
 
