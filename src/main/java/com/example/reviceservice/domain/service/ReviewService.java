@@ -9,6 +9,7 @@ import com.example.reviceservice.domain.entity.Review;
 import com.example.reviceservice.domain.repository.MemberRepository;
 import com.example.reviceservice.domain.repository.ProductRepository;
 import com.example.reviceservice.domain.repository.ReviewRepository;
+import com.example.reviceservice.domain.util.ReviewHelper;
 import com.example.reviceservice.global.exception.MemberException;
 import com.example.reviceservice.global.exception.ProductException;
 import com.example.reviceservice.global.exception.ReviewException;
@@ -33,11 +34,11 @@ public class ReviewService {
     private final MemberRepository memberRepository;
     private final ReviewRepository reviewRepository;
     private final ImageUploader imageUploader; // 이미지 업로드 로직 더미 구현체
+    private final RedisReviewService redisReviewService;
 
     @Transactional
     public ReviewCreatedResponseDTO createReview(Long productId, ReviewCreatedRequestDTO reviewCreatedRequestDTO, MultipartFile image) {
         // Product 조회
-        // 상품 조회
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
 
@@ -45,22 +46,20 @@ public class ReviewService {
         Member member = memberRepository.findById(reviewCreatedRequestDTO.getUserId())
                 .orElseThrow(() -> new MemberException(GlobalMessage.NOT_FOUND_MEMBER));
 
-        String imageUrl = null;
-        if (image != null) {
-            try {
-                imageUrl = imageUploader.upload(image);
-            } catch (ReviewException e) {
-                throw new ReviewException(e.getMessage());
-            }
-        }
+
+        // 이미지 업로드 처리
+        String imageUrl = uploadImage(image);
 
 
-        // 리뷰 엔티티 생성 및 저장
-        Review review = new Review(reviewCreatedRequestDTO, product, member);
-        if (imageUrl != null) {
-            review.addImage(imageUrl); // 이미지 URL 추가
-        }
-        reviewRepository.save(review);
+        // 리뷰 저장
+        Review review = saveReview(product, member, reviewCreatedRequestDTO, imageUrl);
+
+        // Redis에 리뷰 수와 점수 업데이트
+        redisReviewService.incrementReviewCount(productId);
+        redisReviewService.incrementTotalScore(productId, reviewCreatedRequestDTO.getScore());
+
+        // 6. MySQL 통계 업데이트
+        syncReviewStatsWithDatabase(productId);
 
         return new ReviewCreatedResponseDTO(review);
     }
@@ -70,22 +69,12 @@ public class ReviewService {
         PageRequest pageRequest = PageRequest.of(cursor, size, Sort.by(Sort.Direction.DESC, "created"));
         Page<Review> reviewsPage = reviewRepository.findByProductId(productId, pageRequest);
 
-        // 리뷰 목록 변환
         List<ReviewResponse.ReviewDTO> reviews = reviewsPage.getContent().stream()
-                .map(review -> new ReviewResponse.ReviewDTO(
-                        review.getId(),
-                        review.getMember().getId(),
-                        review.getReviewScore(),
-                        review.getContent(),
-                        review.getImageUrl(),
-                        review.getCreated()
-                ))
+                .map(ReviewHelper::convertToReviewDTO)
                 .collect(Collectors.toList());
 
-        double averageScore = reviews.stream()
-                .mapToInt(ReviewResponse.ReviewDTO::getScore)
-                .average()
-                .orElse(0.0);
+
+        float averageScore = ReviewHelper.calculateAverageScore(reviews);
 
         // 응답 객체 생성
         return new ReviewResponse(
@@ -95,6 +84,38 @@ public class ReviewService {
                 reviews
         );
 
+    }
+
+    @Transactional
+    public void syncReviewStatsWithDatabase(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
+
+        // Redis에서 리뷰 수와 총 점수 가져오기
+        int reviewCount = redisReviewService.getReviewCount(productId);
+        float totalScore = redisReviewService.getTotalScore(productId);
+        float averageScore = reviewCount > 0 ? totalScore / reviewCount : 0.0F;
+
+        // DB에 리뷰 통계 반영
+        product.updateReviewStats(reviewCount, averageScore);
+        productRepository.save(product);
+    }
+
+    private String uploadImage(MultipartFile image) {
+        if (image == null) return null;
+        try {
+            return imageUploader.upload(image);
+        } catch (ReviewException e) {
+            throw new ReviewException(GlobalMessage.NOT_FOUND_IMAGE);
+        }
+    }
+
+    private Review saveReview(Product product, Member member, ReviewCreatedRequestDTO requestDTO, String imageUrl) {
+        Review review = new Review(requestDTO, product, member);
+        if (imageUrl != null) {
+            review.addImage(imageUrl);
+        }
+        return reviewRepository.save(review);
     }
 
 
