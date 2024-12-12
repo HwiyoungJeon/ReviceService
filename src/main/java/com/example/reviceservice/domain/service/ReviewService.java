@@ -53,14 +53,13 @@ public class ReviewService {
             if (!isLocked) {
                 throw new ReviewException(GlobalMessage.LOCK_FAILED);
             }
+            if (reviewRepository.existsByProductIdAndMemberId(productId, reviewCreatedRequestDTO.getUserId())) {
+                throw new ReviewException(GlobalMessage.DUPLICATE_REVIEW);
+            }
             // Product 조회
-            Product product = productRepository.findById(productId)
-                    .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
-
+            Product product = findProductById(productId);
             // 사용자 조회
-            Member member = memberRepository.findById(reviewCreatedRequestDTO.getUserId())
-                    .orElseThrow(() -> new MemberException(GlobalMessage.NOT_FOUND_MEMBER));
-
+            Member member = findMemberById(reviewCreatedRequestDTO.getUserId());
 
             // 이미지 업로드 처리
             String imageUrl = uploadImage(image);
@@ -70,10 +69,9 @@ public class ReviewService {
             Review review = saveReview(product, member, reviewCreatedRequestDTO, imageUrl);
 
             // Redis에 리뷰 수와 점수 업데이트
-            redisReviewService.incrementReviewCount(productId);
-            redisReviewService.incrementTotalScore(productId, reviewCreatedRequestDTO.getScore());
+            updateReviewStatsInRedis(productId, reviewCreatedRequestDTO.getScore());
 
-            // 6. MySQL 통계 업데이트
+            // MySQL 통계 업데이트
             syncReviewStatsWithDatabase(productId);
 
             return new ReviewCreatedResponseDTO(review);
@@ -89,12 +87,10 @@ public class ReviewService {
 
     public ReviewResponse getReviews(Long productId, int cursor, int size) {
         // 페이징 요청 생성
-        PageRequest pageRequest = PageRequest.of(cursor, size, Sort.by(Sort.Direction.DESC, "created"));
+        PageRequest pageRequest = createPageRequest(cursor, size);
         Page<Review> reviewsPage = reviewRepository.findByProductId(productId, pageRequest);
 
-        List<ReviewResponse.ReviewDTO> reviews = reviewsPage.getContent().stream()
-                .map(ReviewHelper::convertToReviewDTO)
-                .collect(Collectors.toList());
+        List<ReviewResponse.ReviewDTO> reviews = convertReviewsToDTO(reviewsPage);
 
 
         float averageScore = ReviewHelper.calculateAverageScore(reviews);
@@ -111,17 +107,15 @@ public class ReviewService {
 
     @Transactional
     public void syncReviewStatsWithDatabase(Long productId) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
+        Product product = findProductById(productId);
 
         // Redis에서 리뷰 수와 총 점수 가져오기
         int reviewCount = redisReviewService.getReviewCount(productId);
         float totalScore = redisReviewService.getTotalScore(productId);
-        float averageScore = reviewCount > 0 ? totalScore / reviewCount : 0.0F;
+        float averageScore = calculateAverageScore(reviewCount, totalScore);
 
         // DB에 리뷰 통계 반영
-        product.updateReviewStats(reviewCount, averageScore);
-        productRepository.save(product);
+        updateProductStats(product, reviewCount, averageScore);
     }
 
     private String uploadImage(MultipartFile image) {
@@ -141,5 +135,38 @@ public class ReviewService {
         return reviewRepository.save(review);
     }
 
+    private Product findProductById(Long productId) {
+        return productRepository.findById(productId)
+                .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
+    }
+
+    private Member findMemberById(Long userId) {
+        return memberRepository.findById(userId)
+                .orElseThrow(() -> new MemberException(GlobalMessage.NOT_FOUND_MEMBER));
+    }
+
+    private void updateReviewStatsInRedis(Long productId, int score) {
+        redisReviewService.incrementReviewCount(productId);
+        redisReviewService.incrementTotalScore(productId, score);
+    }
+
+    private void updateProductStats(Product product, int reviewCount, float averageScore) {
+        product.updateReviewStats(reviewCount, averageScore);
+        productRepository.save(product);
+    }
+
+    private float calculateAverageScore(int reviewCount, float totalScore) {
+        return reviewCount > 0 ? totalScore / reviewCount : 0.0F;
+    }
+
+    private PageRequest createPageRequest(int cursor, int size) {
+        return PageRequest.of(cursor, size, Sort.by(Sort.Direction.DESC, "created"));
+    }
+
+    private List<ReviewResponse.ReviewDTO> convertReviewsToDTO(Page<Review> reviewsPage) {
+        return reviewsPage.getContent().stream()
+                .map(ReviewHelper::convertToReviewDTO)
+                .collect(Collectors.toList());
+    }
 
 }
