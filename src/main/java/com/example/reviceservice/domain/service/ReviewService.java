@@ -16,6 +16,8 @@ import com.example.reviceservice.global.exception.ReviewException;
 import com.example.reviceservice.global.message.GlobalMessage;
 import com.example.reviceservice.global.uploader.ImageUploader;
 import lombok.RequiredArgsConstructor;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -24,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,33 +38,53 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ImageUploader imageUploader; // 이미지 업로드 로직 더미 구현체
     private final RedisReviewService redisReviewService;
+    private final RedissonClient redissonClient; // Redis 분산 락을 위한 클라이언트
 
     @Transactional
     public ReviewCreatedResponseDTO createReview(Long productId, ReviewCreatedRequestDTO reviewCreatedRequestDTO, MultipartFile image) {
-        // Product 조회
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
+        String lockKey = "lock:product:" + productId; // 특정 상품에 대한 락 키 생성
+        RLock lock = redissonClient.getLock(lockKey);
 
-        // 사용자 조회
-        Member member = memberRepository.findById(reviewCreatedRequestDTO.getUserId())
-                .orElseThrow(() -> new MemberException(GlobalMessage.NOT_FOUND_MEMBER));
+        boolean isLocked = false;
+
+        try{
+            isLocked = lock.tryLock(10, 5, TimeUnit.SECONDS);
+
+            if (!isLocked) {
+                throw new ReviewException(GlobalMessage.LOCK_FAILED);
+            }
+            // Product 조회
+            Product product = productRepository.findById(productId)
+                    .orElseThrow(() -> new ProductException(GlobalMessage.NOT_FOUND_PRODUCT));
+
+            // 사용자 조회
+            Member member = memberRepository.findById(reviewCreatedRequestDTO.getUserId())
+                    .orElseThrow(() -> new MemberException(GlobalMessage.NOT_FOUND_MEMBER));
 
 
-        // 이미지 업로드 처리
-        String imageUrl = uploadImage(image);
+            // 이미지 업로드 처리
+            String imageUrl = uploadImage(image);
 
 
-        // 리뷰 저장
-        Review review = saveReview(product, member, reviewCreatedRequestDTO, imageUrl);
+            // 리뷰 저장
+            Review review = saveReview(product, member, reviewCreatedRequestDTO, imageUrl);
 
-        // Redis에 리뷰 수와 점수 업데이트
-        redisReviewService.incrementReviewCount(productId);
-        redisReviewService.incrementTotalScore(productId, reviewCreatedRequestDTO.getScore());
+            // Redis에 리뷰 수와 점수 업데이트
+            redisReviewService.incrementReviewCount(productId);
+            redisReviewService.incrementTotalScore(productId, reviewCreatedRequestDTO.getScore());
 
-        // 6. MySQL 통계 업데이트
-        syncReviewStatsWithDatabase(productId);
+            // 6. MySQL 통계 업데이트
+            syncReviewStatsWithDatabase(productId);
 
-        return new ReviewCreatedResponseDTO(review);
+            return new ReviewCreatedResponseDTO(review);
+        }catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ReviewException(GlobalMessage.LOCK_ACQUISITION_FAILED);
+        } finally {
+            if (isLocked) {
+                lock.unlock(); // 락 해제
+            }
+        }
     }
 
     public ReviewResponse getReviews(Long productId, int cursor, int size) {

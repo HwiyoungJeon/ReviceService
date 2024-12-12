@@ -31,7 +31,14 @@ public class Product extends TimeStamp {
         this.score = 0.0f;    // 초기화
     }
 
+
     public void updateReviewStats(int reviewCount, float score) {
+        this.reviewCount = reviewCount;
+        this.score = score;
+    }
+
+    // 생성자: 테스트용
+    public Product(long id, long reviewCount, float score) {
         this.reviewCount = reviewCount;
         this.score = score;
     }
