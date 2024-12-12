@@ -10,4 +10,8 @@ public class GlobalMessage {
     public static final String NOT_FOUND_IMAGE = "업로드된 이미지가 존재하지 않습니다.";
     public static final String DELETED = "정상적으로 삭제 되었습니다.";
 
+    // Redis 락 관련 메시지
+    public static final String LOCK_FAILED = "리뷰 작성한 인원의 요청증가로 잠시 후 다시 시도해주세요.";
+    public static final String LOCK_ACQUISITION_FAILED = "락 획득에 실패했습니다.";
+
 }

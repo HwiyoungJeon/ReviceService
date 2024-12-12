@@ -21,4 +21,9 @@ public class Member extends TimeStamp {
 
     @OneToMany(mappedBy = "member", fetch = FetchType.LAZY, orphanRemoval = true)
     private List<Review> reviews = new ArrayList<>();
+
+    // 생성자: 테스트용
+    public Member(String username) {
+        this.username = username;
+    }
 }
