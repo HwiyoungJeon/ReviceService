@@ -116,8 +116,28 @@
 ---
 
 ## 설치 및 실행 방법
-- 생략
 
+**1. 프로젝트 클론**  
+```bash
+git clone git@github.com:HwiyoungJeon/ReviceService.git
+cd reviceservice
+```
+**2. Docker Compose 설치**  
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose -y
+```
+**3. Docker Compose-Redis 실행** 
+```bash
+docker-compose up -d
+docker ps
+docker exec -it {실행된 Redis 컨테이너이름} redis-cli
+```
+**4. 프로젝트 빌드 및 실행**  
+```bash
+./gradlew build
+./gradlew bootRun
+```
 ---
 
 ## 데이터베이스 스키마
